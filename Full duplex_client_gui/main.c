@@ -60,6 +60,7 @@ typedef struct
     uint32_t length;
     char filename[64];
     char target[64];
+    char sender[64]; // اسم المرسل
 } MsgHeader;
 #pragma pack(pop)
 
@@ -205,6 +206,8 @@ DWORD WINAPI SendFile(LPVOID arg)
     hdr.length = sz;
     strncpy(hdr.filename, fname, 63);
     strncpy(hdr.target, toName, 63);
+    // السيرفر هو اللي هيحط sender، بس نحطه هنا عشان الـ echo بتاع نفسنا
+    strncpy(hdr.sender, MY_NAME, 63);
 
     int r1 = send_all(sock, (char *)&hdr, sizeof(MsgHeader));
     int r2 = send_all(sock, data, (int)sz);
@@ -216,11 +219,12 @@ DWORD WINAPI SendFile(LPVOID arg)
         return 0;
     }
 
+    // عرض الرسالة للمرسل نفسه بنفس الشكل
     char line[256];
     if (strlen(toName) > 0)
-        snprintf(line, sizeof(line), "[Private -> %s] Me: [Sent file: %s]", toName, fname);
+        snprintf(line, sizeof(line), "[Private -> %s] Me: [File: %s]", toName, fname);
     else
-        snprintf(line, sizeof(line), "Me: [Sent file: %s]", fname);
+        snprintf(line, sizeof(line), "Me: [File: %s]", fname);
 
     PostMessage(hwnd_global, WM_NEW_MESSAGE, (WPARAM)_strdup(line), 0);
     return 0;
@@ -272,9 +276,11 @@ DWORD WINAPI ReceiveThread(LPVOID arg)
         }
         else if (hdr.type == MSG_FILE)
         {
+            // حفظ الملف في التيمب
             char dir[MAX_PATH], fpath[MAX_PATH];
             GetTempPath(MAX_PATH, dir);
             snprintf(fpath, MAX_PATH, "%s%s", dir, hdr.filename);
+
             HANDLE f = CreateFile(fpath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, 0, NULL);
             if (f != INVALID_HANDLE_VALUE)
             {
@@ -282,6 +288,15 @@ DWORD WINAPI ReceiveThread(LPVOID arg)
                 WriteFile(f, data, hdr.length, &w, NULL);
                 CloseHandle(f);
             }
+
+            // عرض اسم المرسل جنب اسم الملف زي الرسالة العادية
+            char line[MAX_PATH + 100];
+            if (strlen(hdr.sender) > 0)
+                snprintf(line, sizeof(line), "%s: [File: %s]", hdr.sender, hdr.filename);
+            else
+                snprintf(line, sizeof(line), "[File: %s]", hdr.filename);
+
+            PostMessage(hwnd_global, WM_NEW_MESSAGE, (WPARAM)_strdup(line), 0);
             PostMessage(hwnd_global, WM_NEW_FILE, (WPARAM)_strdup(fpath), 0);
         }
         free(data);
@@ -342,12 +357,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 
     case WM_NEW_FILE:
     {
+        // فتح الملف بس بدون عرض رسالة (الرسالة اتعرضت فوق)
         char *path = (char *)wp;
-        const char *fname = strrchr(path, '\\');
-        fname = fname ? fname + 1 : path;
-        char line[MAX_PATH + 30];
-        snprintf(line, sizeof(line), "[File received: %s]", fname);
-        AppendChat(line);
         ShellExecute(NULL, "open", path, NULL, NULL, SW_SHOW);
         free(path);
     }

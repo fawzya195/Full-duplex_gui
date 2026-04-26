@@ -26,6 +26,7 @@ typedef struct
     uint32_t length;
     char filename[64];
     char target[64];
+    char sender[64]; // اسم المرسل
 } MsgHeader;
 #pragma pack(pop)
 
@@ -192,6 +193,9 @@ DWORD WINAPI ReceiveThread(LPVOID arg)
                 WriteFile(f, data, hdr.length, &w, NULL);
                 CloseHandle(f);
             }
+
+            // حط اسم المرسل في الهيدر قبل الإرسال
+            strncpy(hdr.sender, clientName, 63);
 
             if (strlen(hdr.target) > 0)
             {
